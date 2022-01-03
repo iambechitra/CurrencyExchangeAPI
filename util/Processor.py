@@ -1,6 +1,8 @@
 import glob
 import os
 import pickle
+import sys
+import time
 from datetime import datetime
 
 import requests
@@ -13,13 +15,13 @@ EXCHANGE_COLUMNS = ['id', 'date', 'from_currency', 'to_currency', 'open_rate', '
 
 PREDICTION_COLUMNS = ['id', 'date', 'from_currency', 'to_currency', 'avg_rate']
 
-CSV_LOCATION = os.path.join(os.getcwd(), 'res\daily_log.csv')
-PICKLE_LOCATION = os.path.join(os.getcwd(), 'mlkit\generated.pckl')
-RAW_CSV = os.path.join(os.getcwd(), 'res\csv')
+CSV_LOCATION = os.path.join(sys.path[0], 'res' + os.sep + 'daily_log.csv')
+PICKLE_LOCATION = os.path.join(sys.path[0], 'mlkit' + os.sep + 'generated.pckl')
+RAW_CSV = os.path.join(sys.path[0], 'res' + os.sep + 'csv')
 
 
 def to_df(x=None):
-    data = glob.glob(RAW_CSV + "/*.csv")
+    data = glob.glob(RAW_CSV + os.sep + "*.csv")
     from_currency = 'USD'
     if x is not None:
         from_currency = x
@@ -29,7 +31,7 @@ def to_df(x=None):
     for d in data:
         df = pd.read_csv(d)
         df.drop(labels=['Volume'], axis=1, inplace=True)
-        to_currency = d.split('\\')[-1].split('=')[0]
+        to_currency = d.split(os.sep)[-1].split('=')[0]
         row, _ = df.shape
         _to = [to_currency for i in range(row)]
         _from = [from_currency for i in range(row)]
@@ -51,7 +53,6 @@ def to_dataframe_from_db(lst_item, columns):
 
 def on_exchange_rate_from_db_to_df():
     raw = ExchangeRate.query.all()
-
     lst = []
 
     for row in raw:
@@ -87,33 +88,38 @@ def to_database(df=None, db_ref=None):
         db_ref.session.commit()
 
 
-def prediction_to_database(db_ref):
+def prediction_to_database(context, db_ref=None, drop=False):
     if db_ref is None:
         return
     else:
-        file = pickle.load(open(PICKLE_LOCATION, 'rb'))
+        with context:
+            if drop:
+                PredictionRate.query.delete()
 
-        for f in file.keys():
-            df = file[f]
-            df = df.dropna()
-            for index, row in df.iterrows():
-                try:
-                    date = row['ds']
-                    rate = row['yhat']
-                    _from = row['from']
-                    _to = row['to']
+            file = pickle.load(open(PICKLE_LOCATION, 'rb'))
 
-                    __row = PredictionRate(
-                        date=date,
-                        from_currency=_from,
-                        to_currency=_to,
-                        exchange_rate=rate
-                    )
-                    db_ref.session.add(__row)
-                except Exception as e:
-                    print(f'Exception Occurred: {e}')
-                    continue
-        db_ref.session.commit()
+            for f in file.keys():
+                df = file[f]
+                df = df.dropna()
+                for index, row in df.iterrows():
+                    print(f'Inserting Row: {index}')
+                    try:
+                        date = row['ds']
+                        rate = row['yhat']
+                        _from = row['from']
+                        _to = row['to']
+
+                        __row = PredictionRate(
+                            date=date,
+                            from_currency=_from,
+                            to_currency=_to,
+                            exchange_rate=rate
+                        )
+                        db_ref.session.add(__row)
+                    except Exception as e:
+                        print(f'Exception Occurred: {e}')
+                        continue
+            db_ref.session.commit()
 
 
 def api_to_df():
@@ -128,8 +134,8 @@ def api_to_df():
     rates['base'] = 'USD'
 
     print(rates)
-    print(os.path.join(os.getcwd(), 'res\daily_log.csv'))
-    if not os.path.isfile('res\daily_log.csv'):
+    print(os.path.join(sys.path[0], 'res' + os.sep + 'daily_log.csv'))
+    if not os.path.isfile(CSV_LOCATION):
         pd.DataFrame(rates, index=[0]).to_csv(CSV_LOCATION, index=False)
     else:
         df = pd.read_csv(CSV_LOCATION)
@@ -139,11 +145,14 @@ def api_to_df():
 
 def insert_on_db_as_scheduled(db_ref, context):
     _dict = process_data_for_db_insert()
+    print(_dict)
     if context is not None:
         with context:
-            insert_on_exchange_db(db_ref, _dict)
+            status = insert_on_exchange_db(db_ref, _dict)
+        return status
     else:
         print('No Context Found!')
+        return False
 
 
 def get_transformation_of_daily_data(base, target, df):
@@ -153,16 +162,20 @@ def get_transformation_of_daily_data(base, target, df):
         response['base'] = base
         response['date'] = row['date']
         response['timestamp'] = str(row['timestamp'])
+        _data = []
         for tar in target:
-            response[tar] = row[tar]
+            _data.append({tar: round(float(row[tar]), 3)})
+        response['data'] = _data
 
     else:
         base_f = float(row[base])
         response['base'] = base
         response['date'] = row['date']
         response['timestamp'] = str(row['timestamp'])
+        _data = []
         for tar in target:
-            response[tar] = str(float(row[tar]) / base_f)
+            _data.append({tar: round(float(row[tar]) / base_f, 3)})
+        response['data'] = _data
 
     return response
 
@@ -186,7 +199,7 @@ def get_transformation_on_range_data(base, target, lst=None):
                 'date': row['date'][:10],
                 'from': _from,
                 'to': _target,
-                'rate': _avg
+                'rate': round(float(_avg), 3)
             })
     else:
         for index, row in base.iterrows():
@@ -203,7 +216,7 @@ def get_transformation_on_range_data(base, target, lst=None):
                 'date': target_row['date'][:10],
                 'from': _from,
                 'to': _target,
-                'rate': _avg
+                'rate': round(float(_avg), 3)
             })
 
     return tpl
@@ -224,7 +237,7 @@ def get_prediction_transformation_on_range_data(base, target):
                 'date': row['date'][:10],
                 'from': _from,
                 'to': _target,
-                'rate': _avg
+                'rate': round(float(_avg), 3)
             })
     else:
         for index, row in base.iterrows():
@@ -237,7 +250,7 @@ def get_prediction_transformation_on_range_data(base, target):
                 'date': target_row['date'][:10],
                 'from': _from,
                 'to': _target,
-                'rate': _avg
+                'rate': round(float(_avg), 3)
             })
 
     return tpl
@@ -247,6 +260,7 @@ def process_data_for_db_insert():
     today = datetime.today().strftime('%Y-%m-%d')
     # print(os.getcwd())
     df = pd.read_csv(CSV_LOCATION)
+    df.dropna(inplace=True)
     filtered = df[df.date == today]
     nrows, _ = filtered.shape
     currency_columns = list(filtered.columns)[:-3]
@@ -314,11 +328,13 @@ def insert_on_exchange_db(db_ref, currency_dict):
             )
             db_ref.session.add(__row)
         except Exception as e:
+            print(currency_dict[key])
             print(f'Exception Occurred: {e}')
             continue
 
     db_ref.session.commit()
     print('Insertion Success!')
+    return True
 
 
 def path():
@@ -336,21 +352,23 @@ def is_insertion_possible(dataframe, count=8):
     return False
 
 
+def rebuild_prediction_table():
+    pass
+
+
 def generate_pickle_file(db_ref, context, directory, from_db=False):
     if from_db:
         print(f'Training will start shortly\nData Source DB')
-        query = 'SELECT DISTINCT to_currency FROM ExchangeRate'
-        if context is None:
-            df = on_exchange_rate_from_db_to_df()
-            lst = db_ref.session.execute(query)
-        else:
-            with context:
-                df = on_exchange_rate_from_db_to_df()
-                lst = db_ref.session.execute(query)
+        # query = 'SELECT DISTINCT to_currency FROM ExchangeRate'
 
-        _temp = []
-        for l in lst:
-            _temp.append(l[-1])
+        with context:
+            query = db_ref.session.query(ExchangeRate.to_currency.distinct().label('to_currency'))
+            _temp = [row.to_currency for row in query.all()]
+            df = on_exchange_rate_from_db_to_df()
+
+        # _temp = []
+        # for l in lst:
+        #     _temp.append(l[-1])
         print(f'DISTINCT KEY:\n{_temp}')
         df_map = {}
         for temp in _temp:
@@ -360,7 +378,7 @@ def generate_pickle_file(db_ref, context, directory, from_db=False):
             if row > 150:
                 _filtered = filtered.drop(columns=['from_currency', 'to_currency'])
                 df_map[temp] = _filtered
-
+        print(f'len of curr: {len(df_map.keys())}')
         model = Model(df_map=df_map)
         model.train(limit=180)
         result = model.get_result_dictionary()

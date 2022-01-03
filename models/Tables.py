@@ -11,7 +11,7 @@ def to_json_prediction(tpl):
         'date': date[:10],
         'from': from_currency,
         'to': to_currency,
-        'rate': exchange_rate
+        'rate': round(float(exchange_rate), 3)
     }
 
 
@@ -21,7 +21,7 @@ def to_json_exchange(tpl):
         'date': date[:10],
         'from': from_currency,
         'to': to_currency,
-        'rate': avg_rate
+        'rate': round(float(avg_rate), 3)
     }
 
 

@@ -5,9 +5,9 @@ from datetime import datetime, timedelta
 from flask import request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 
-from models.Tables import to_json_exchange, to_json_prediction
+from models.Tables import *
 from util.Processor import get_transformation_of_daily_data, to_dataframe_from_db, PREDICTION_COLUMNS, EXCHANGE_COLUMNS, \
-    get_transformation_on_range_data, get_prediction_transformation_on_range_data, CSV_LOCATION
+    get_transformation_on_range_data, get_prediction_transformation_on_range_data, CSV_LOCATION, api_to_df
 
 db = SQLAlchemy()
 
@@ -17,7 +17,11 @@ def index():
 
 
 def request_data_on_daily():
-    df = pd.read_csv(CSV_LOCATION)
+    try:
+        df = pd.read_csv(CSV_LOCATION)
+    except FileNotFoundError:
+        api_to_df()
+        df = pd.read_csv(CSV_LOCATION)
     currency = request.args.get('currency')
     print(currency)
     base = request.args.get('base')
@@ -120,3 +124,14 @@ def request_data_on_range():
         # if _from != 'USD':
 
     return jsonify(lst)
+
+
+def get_list_of_currency():
+    query = db.session.query(PredictionRate.to_currency.distinct().label('to_currency'))
+    _temp = [row.to_currency for row in query.all()]
+    _len = len(_temp)
+
+    return jsonify({
+        'currencies': _temp,
+        'len': _len
+    })

@@ -1,4 +1,5 @@
 import glob
+import os
 import pickle
 import pandas as pd
 from fbprophet import Prophet
@@ -25,13 +26,13 @@ class DataLoader:
             return {True: True}
 
     def __data_loader(self, path):
-        datasets = glob.glob(path + '/*.csv')
+        datasets = glob.glob(path + os.sep + '*.csv')
 
         print(f'Total datasets = {len(datasets)}')
         for index, link in enumerate(datasets):
             print(f'Processing Data[{index + 1}]')
             print(link)
-            key = link.split('/')[-1].split('=')[0]
+            key = link.split(os.sep)[-1].split('=')[0]
             df = pd.read_csv(link)
             self.__data_dict[key] = df
             print(f'{key}: Data[{index + 1}] Processing complete...')
@@ -39,7 +40,7 @@ class DataLoader:
         return self.__data_dict
 
     def __model_loader(self, path, filename='result'):
-        glb = glob.glob(path + '/' + filename + '.pckl')
+        glb = glob.glob(path + os.sep + filename + '.pckl')
         link = glb[0] if len(glb) > 0 else glb
 
         with open(link, 'rb') as fin:
@@ -54,12 +55,12 @@ class DataLoader:
             return False
 
         if path is not None:
-            file_path = r'' + path + '/' + filename + '.pckl'
+            file_path = r'' + path + os.sep + filename + '.pckl'
             with open(file_path, 'wb') as fout:
                 pickle.dump(result, fout)
 
         else:
-            file_path = r'' + self.__model_path + '/' + filename + '.pckl'
+            file_path = r'' + self.__model_path + os.sep + filename + '.pckl'
             with open(file_path, 'wb') as fout:
                 pickle.dump(result, fout)
 
@@ -83,7 +84,7 @@ class Model:
             limit = 30
 
         for index, key in enumerate(self.__df_map):
-            print(f'Serial Number : {index+1}')
+            print(f'Serial Number : {index + 1}')
             print(f'Training Model for Currency: {key}')
             df = self.__df_map[key]
             chunk = pd.DataFrame()
@@ -95,7 +96,7 @@ class Model:
             forecast = model.predict(future)
             row, _ = forecast.shape
             forecast['from'] = ['USD' for _ in range(row)]
-            index_key = key.split('\\')[-1]
+            index_key = key.split(os.sep)[-1]
             print(f'Index Key: {index_key}')
             forecast['to'] = [index_key for _ in range(row)]
             self.__result_dict[index_key] = forecast

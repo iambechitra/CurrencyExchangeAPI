@@ -1,5 +1,6 @@
 Pipfile
 Pipfile.lock
 res/daily_log.csv
+res/csv/
 res/exchange_rate.db
 mlkit/generated.pckl
