@@ -80,6 +80,6 @@ if __name__ == '__main__':
             to_database(df, db)
             generate_pickle_file(db_ref=db, context=app.app_context(), directory=os.path.join(os.getcwd(), 'mlkit'),
                                  from_db=True)
-            prediction_to_database(db)
+            prediction_to_database(context=app.app_context(), db_ref=db)
 
     app.run(debug=True, use_reloader=False)

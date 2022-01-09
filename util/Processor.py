@@ -115,6 +115,7 @@ def prediction_to_database(context, db_ref=None, drop=False):
                             to_currency=_to,
                             exchange_rate=rate
                         )
+                        print(f'Inserting into Prediction..\n{__row}')
                         db_ref.session.add(__row)
                     except Exception as e:
                         print(f'Exception Occurred: {e}')
